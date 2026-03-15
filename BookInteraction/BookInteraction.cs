@@ -1,37 +1,45 @@
-﻿using UnityEngine;
+using UnityEngine;
+using UnityEngine.Events;
 using System.Collections;
 
+[RequireComponent(typeof(Collider))] // Bu scriptin çalışması için collider şart, otomatik ekler.
 public class BookInteraction : MonoBehaviour
 {
     [Header("References")]
-    public GameObject safeObject;           // Kasa GameObject'i
+    [Tooltip("Kitap çekildiğinde ortaya çıkacak obje (Kasa, gizli kapı vb.)")]
+    public GameObject safeObject;
 
     [Header("Settings")]
-    public float rotationSpeed = 2f;        // Kitabın dönme hızı
-    public float movementSpeed = 5f;        // Kasanın hareket hızı
+    public float rotationSpeed = 2f;
+    [Tooltip("Kitabın ne kadar eğileceği")]
+    public Vector3 bookRotationOffset = new Vector3(0f, 20f, 0f);
+    
+    public float movementSpeed = 5f;
+    [Tooltip("Kasanın ortaya çıktığında gideceği Y ekseni hedefi (Local)")]
+    public float safeTargetLocalY = -6.245f;
 
-    private bool hasBeenActivated = false;  // Tek seferlik çalışma kontrolü
-    private Vector3 initialSafePosition;    // Kasanın başlangıç pozisyonu
+    [Header("Events")]
+    [Tooltip("Kitap çekildiğinde çalışacak olaylar (Örn: Görev tamamlama, ses çalma)")]
+    public UnityEvent onBookActivated;
 
-    private Quaternion initialBookRotation; // Kitabın ilk rotasyonu
-    private Quaternion targetBookRotation;  // Kitabın öne eğilmiş rotasyonu
-
-    private Collider bookCollider;          // Kitabın collider'ı
+    private bool hasBeenActivated = false;
+    private Vector3 initialSafePosition;
+    private Quaternion initialBookRotation;
+    private Quaternion targetBookRotation;
+    private Collider bookCollider;
 
     void Start()
     {
-        // Collider referansı
         bookCollider = GetComponent<Collider>();
 
-        // Kasanın ilk pozisyonu
         if (safeObject != null)
         {
             initialSafePosition = safeObject.transform.localPosition;
         }
 
-        // Kitabın rotasyonları
+        // Kitabın rotasyonlarını hesapla (Hardcoded değer yerine değişkenden alıyoruz)
         initialBookRotation = transform.localRotation;
-        targetBookRotation = initialBookRotation * Quaternion.Euler(0f, 20f, 0f);
+        targetBookRotation = initialBookRotation * Quaternion.Euler(bookRotationOffset);
     }
 
     void OnMouseDown()
@@ -42,7 +50,6 @@ public class BookInteraction : MonoBehaviour
         ActivateBook();
     }
 
-    // Normal oynanışta tetiklenen fonksiyon
     private void ActivateBook()
     {
         hasBeenActivated = true;
@@ -53,39 +60,28 @@ public class BookInteraction : MonoBehaviour
         StartCoroutine(RotateBookSmoothly());
         StartCoroutine(RevealSafeSmoothly());
 
-        if (TaskManager.Instance != null)
-        {
-            TaskManager.Instance.CompleteTask("task_trigger_secret_safe");
-            Debug.Log("Görev tetiklendi");
-        }
-        else
-        {
-            Debug.LogError("TaskManager Instance NULL!");
-        }
+        // Kendi TaskManager'ın yerine UnityEvent kullandık.
+        onBookActivated?.Invoke();
     }
-
 
     // --- SAVE SİSTEMİ İÇİN DURUM GERİ YÜKLEME ---
     public void RestoreState(bool isActivated)
     {
         if (isActivated)
         {
-            hasBeenActivated = true; // Durumu "kullanıldı" yap
+            hasBeenActivated = true;
 
-            // Collider'ı kapat (Tekrar tıklanamasın)
             if (bookCollider != null) bookCollider.enabled = false;
 
-            // Kitap animasyonunun bitmiş hali (Başlangıç rotasyonu)
             transform.localRotation = initialBookRotation;
 
-            // Kasa animasyonunun bitmiş hali (Açık pozisyon)
             if (safeObject != null)
             {
                 safeObject.SetActive(true);
-                // RevealSafeSmoothly coroutine'indeki hedef pozisyonu manuel veriyoruz:
+                // Hardcoded değer yerine değişkeni kullanıyoruz
                 Vector3 targetPos = new Vector3(
                     safeObject.transform.localPosition.x,
-                    -6.245f,
+                    safeTargetLocalY,
                     safeObject.transform.localPosition.z
                 );
                 safeObject.transform.localPosition = targetPos;
@@ -95,13 +91,11 @@ public class BookInteraction : MonoBehaviour
         }
     }
 
-    // SaveManager kaydederken bunu çağırır
     public bool IsActivated()
     {
         return hasBeenActivated;
     }
 
-    // Kitap ileri → bekle → geri
     IEnumerator RotateBookSmoothly()
     {
         float timeElapsed = 0f;
@@ -128,7 +122,6 @@ public class BookInteraction : MonoBehaviour
         transform.localRotation = initialBookRotation;
     }
 
-    // Kasayı yukarı çıkar
     IEnumerator RevealSafeSmoothly()
     {
         yield return new WaitForSeconds(0.5f);
@@ -136,7 +129,8 @@ public class BookInteraction : MonoBehaviour
         if (safeObject == null) yield break;
 
         Vector3 startPosition = safeObject.transform.localPosition;
-        Vector3 targetPosition = new Vector3(startPosition.x, -6.245f, startPosition.z);
+        // Hardcoded değer yerine değişkeni kullanıyoruz
+        Vector3 targetPosition = new Vector3(startPosition.x, safeTargetLocalY, startPosition.z);
 
         float timeElapsed = 0f;
         while (timeElapsed < 5f)
